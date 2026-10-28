@@ -1,6 +1,6 @@
 # MemoDeck — flashcard locali su GitHub Pages
 
-Un sito gratuito senza backend. Crei mazzi, aggiungi carte, ripassi ed esporti i contenuti in file JSON.
+No backend.
 
 ## Salvataggio Flashcards
 
