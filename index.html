@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7fb">
+  <meta name="description" content="Crea, ripassa e conserva le tue flashcard sul tuo dispositivo. Nessun account necessario.">
+  <title>MemoDeck — Flashcard tue, davvero</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Navigazione">
+      <div class="brand-area">
+        <a class="brand" href="#" aria-label="MemoDeck, pagina iniziale"><span class="brand-mark">✦</span> Memo<span>Deck</span><span class="brand-dot">.</span></a>
+        <span class="sidebar-caption">IL TUO SPAZIO DI STUDIO</span>
+      </div>
+      <div class="sidebar-scroll">
+        <div class="sidebar-label">LIBRERIA <span id="deck-count">0</span></div>
+        <nav class="deck-nav" id="deck-nav" aria-label="Mazzi"></nav>
+        <button class="add-deck-link" id="sidebar-new-deck" type="button"><span class="plus-icon">+</span> Nuovo mazzo</button>
+      </div>
+      <div class="sidebar-footer">
+        <div class="privacy-note"><span class="privacy-icon">⌂</span><div><strong>Solo sul tuo dispositivo</strong><small>Nessun account o cloud</small></div></div>
+        <button class="sidebar-foot-button" id="sidebar-backup" type="button">↓ Scarica backup completo</button>
+        <button class="sidebar-foot-button" id="sidebar-import" type="button">↥ Importa file JSON</button>
+      </div>
+    </aside>
+
+    <div class="content">
+      <header class="topbar">
+        <div class="topbar-left"><button class="mobile-menu" id="mobile-menu" aria-label="Apri menu" type="button">☰</button><span class="breadcrumb">La mia libreria</span><span class="breadcrumb-separator">/</span><span class="breadcrumb-current" id="breadcrumb-current">Panoramica</span></div>
+        <div class="topbar-right"><span class="offline-status"><span class="status-dot"></span> Dati locali</span><button class="button button-small button-outline topbar-add" id="topbar-new-deck" type="button">+ Nuovo mazzo</button></div>
+      </header>
+      <main id="main-content" tabindex="-1"></main>
+      <footer class="page-footer">MemoDeck · Le flashcard restano nel tuo browser fino a quando non le esporti o cancelli i dati del sito.</footer>
+    </div>
+  </div>
+
+  <input id="import-file" type="file" accept=".json,application/json" hidden>
+  <div class="modal-layer" id="modal-layer" hidden>
+    <div class="modal-backdrop" data-action="close-modal"></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
+      <div class="modal-heading"><h2 id="modal-title"></h2><button class="close-button" type="button" aria-label="Chiudi" data-action="close-modal">×</button></div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
