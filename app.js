@@ -2,7 +2,13 @@
 
 // MemoDeck: il codice del sito viene servito da GitHub Pages;
 // i contenuti dell'utente vivono solo nel suo browser o nei JSON esportati.
-const STORAGE_KEY = 'memodeck.data.v1';
+const STORAGE_KEY = 'memodeck.data.v1'; // Dati delle versioni precedenti, migrati senza cancellarli.
+const DB_NAME = 'memodeck-local-v2';
+const DB_STORE = 'app';
+const MAX_ORIGINAL_IMAGE = 12 * 1024 * 1024;
+const MAX_EMBEDDED_IMAGE = 3 * 1024 * 1024;
+const MAX_IMPORT_FILE = 120 * 1024 * 1024;
+const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const COLORS = ['#7863e8','#329dba','#e3a04c','#54a68a','#de748e','#7183b8'];
 const $ = (selector) => document.querySelector(selector);
 const uid = () => typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -12,11 +18,15 @@ const friendly = (value, fallback = '') => typeof value === 'string' ? value.tri
 let storageErrorShown = false;
 let toastTimer = null;
 let editingCardId = null;
+let editingImages = {front: null, back: null};
+let imageBusy = 0;
+let db = null;
+let saveQueue = Promise.resolve();
 let editingDeckId = null;
 let deleting = null;
 let study = null;
 
-function load() {
+function loadLegacy() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {decks:[], activeDeckId:null};
@@ -28,17 +38,76 @@ function load() {
     return {decks:[], activeDeckId:null};
   }
 }
-let state = load();
+let state = {decks:[], activeDeckId:null};
 
-function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-  catch (e) {
-    console.warn('Salvataggio locale non disponibile:', e);
-    if (!storageErrorShown) {
-      storageErrorShown = true;
-      toast('Salvataggio automatico non disponibile: usa Esporta JSON per non perdere i dati.', true);
-    }
+function openLocalDB() {
+  return new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) { reject(Error('IndexedDB non disponibile')); return; }
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || Error('Impossibile aprire IndexedDB'));
+    req.onblocked = () => reject(Error('Database bloccato da un’altra scheda'));
+  });
+}
+function readLocalDB() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readonly');
+    const req = tx.objectStore(DB_STORE).get('state');
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+function writeLocalDB(snapshot) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put(snapshot, 'state');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error || Error('Errore di salvataggio'));
+    tx.onabort = () => reject(tx.error || Error('Salvataggio interrotto'));
+  });
+}
+function reportSaveError(e) {
+  console.warn('Salvataggio locale non disponibile:', e);
+  if (!storageErrorShown) {
+    storageErrorShown = true;
+    toast('Salvataggio automatico fallito. Scarica subito un backup JSON!', true);
   }
+}
+function save() {
+  // La coda evita che due salvataggi veloci si sovrascrivano in ordine inverso.
+  const snapshot = JSON.parse(JSON.stringify(state));
+  if (db) {
+    saveQueue = saveQueue.catch(() => {}).then(() => writeLocalDB(snapshot));
+    saveQueue.catch(reportSaveError);
+    return saveQueue;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    return Promise.resolve();
+  } catch (e) {
+    reportSaveError(e);
+    return Promise.resolve();
+  }
+}
+async function initialize() {
+  try {
+    db = await openLocalDB();
+    const saved = await readLocalDB();
+    if (saved && Array.isArray(saved.decks)) {
+      state = saved;
+    } else {
+      state = loadLegacy();
+      if (state.decks.length) await save(); // Migra i vecchi mazzi senza toccarli.
+    }
+  } catch (e) {
+    console.warn('IndexedDB non disponibile; modalità di compatibilità:', e);
+    db = null;
+    state = loadLegacy();
+    toast('Archivio immagini non disponibile in questo browser. Prova GitHub Pages.', true);
+  }
+  if (!deckById(state.activeDeckId)) state.activeDeckId = null;
+  render();
 }
 function toast(msg, isError=false) {
   const el = $('#toast');
@@ -75,11 +144,11 @@ function deckTile(d) {
 }
 function homePage() {
  return `<div class="page">
-  <section class="hero"><div class="hero-content"><span class="eyebrow">✦ STUDIA A MODO TUO</span><h1>Un'idea alla volta.<br>Ricorda tutto.</h1><p>Crea le tue flashcard, metti alla prova la memoria e porta sempre con te i tuoi mazzi. Nessun account, nessun cloud.</p><button class="button" data-action="new-deck" type="button">+ Crea un nuovo mazzo</button></div><div class="hero-art" aria-hidden="true"><div class="art-card back"><small>DOMANDA</small>❔</div><div class="art-card"><small>RISPOSTA</small>✦</div></div></section>
+  <section class="hero"><div class="hero-content"><span class="eyebrow">✦ STUDIA A MODO TUO</span><h1>Un'idea alla volta.<br>Ricorda tutto.</h1><p>Crea flashcard con testo e immagini, metti alla prova la memoria e porta sempre con te i tuoi mazzi. Nessun account, nessun cloud.</p><button class="button" data-action="new-deck" type="button">+ Crea un nuovo mazzo</button></div><div class="hero-art" aria-hidden="true"><div class="art-card back"><small>DOMANDA</small>❔</div><div class="art-card"><small>RISPOSTA</small>✦</div></div></section>
   <div class="metric-grid">${metric('I tuoi mazzi',state.decks.length,'Materie e argomenti')}${metric('Flashcard totali',countCards(),'Tutte le tue domande')}${metric('Da ripassare',countReview(),'Carte segnate da rivedere')}</div>
   <div class="section-heading"><h2>I tuoi mazzi</h2><span>${state.decks.length} ${state.decks.length===1?'mazzo':'mazzi'}</span></div>
   ${state.decks.length ? `<div class="deck-grid">${state.decks.map(deckTile).join('')}</div>` : `<div class="empty-state"><div class="empty-icon">▤</div><h3>Parti dal tuo primo mazzo</h3><p>Puoi organizzare le flashcard per corso, esame o argomento.<br>Tutto quello che scrivi rimane su questo dispositivo.</p><button class="button button-primary" data-action="new-deck" type="button">+ Crea un mazzo</button></div>`}
-  ${state.decks.length ? `<div class="review-callout"><div><strong>Le tue flashcard, al sicuro.</strong><p>Scarica un backup JSON e potrai riaprire i mazzi in qualsiasi momento, anche su un altro computer.</p></div><button class="button button-primary" data-action="export-all" type="button">↓ Scarica backup</button></div>` : ''}
+  ${state.decks.length ? `<div class="review-callout"><div><strong>Le tue flashcard, al sicuro.</strong><p>Scarica un backup JSON completo di testi e immagini, poi riaprilo su un altro computer.</p></div><button class="button button-primary" data-action="export-all" type="button">↓ Scarica backup</button></div>` : ''}
  </div>`;
 }
 function deckPage(deck){
@@ -91,12 +160,87 @@ function deckPage(deck){
    <div class="deck-stat-row"><div class="deck-stat"><strong>${deck.cards.length}</strong><small>Carte nel mazzo</small></div><div class="deck-stat"><strong class="green">${known}</strong><small>Conosciute all'ultimo ripasso</small></div><div class="deck-stat"><strong class="accent">${need}</strong><small>Da rivedere</small></div></div>
    <div class="tools-row"><h2>Flashcard <span style="color:#aaa;font-size:12px">(${deck.cards.length})</span></h2><div class="tools-right"><input id="card-search" class="search" type="search" aria-label="Cerca flashcard" placeholder="⌕ Cerca una carta..."><button class="button button-primary button-small" type="button" data-action="new-card">+ Aggiungi carta</button></div></div>
    <div id="cards-container">${cardsList(deck.cards)}</div>
-   ${deck.cards.length ? `<div class="review-callout"><div><strong>Pronto per un ripasso?</strong><p>Gira le carte, verifica le risposte e ritrova quelle da rivedere durante la sessione.</p></div><button class="button button-primary" data-action="start-study" type="button">▷ Avvia ripasso</button></div>`:''}
+   ${deck.cards.length ? `<div class="review-callout"><div><strong>Pronto per un ripasso?</strong><p>Segna subito quali carte conosci, oppure mostra la risposta prima di decidere. Le carte non conosciute ritornano durante la sessione.</p></div><button class="button button-primary" data-action="start-study" type="button">▷ Avvia ripasso</button></div>`:''}
  </div>`;
 }
+// Immagini incorporate nel mazzo (data URL). Non vengono inviate a server esterni.
+function isValidImage(src) {
+  return typeof src === 'string' && src.length <= MAX_EMBEDDED_IMAGE * 4 / 3 + 256 &&
+    /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(src);
+}
+function cardSide(card, side, context='list') {
+  const content = side === 'front' ? card.front : card.back;
+  const image = side === 'front' ? card.frontImage : card.backImage;
+  return `${content ? `<p class="side-text">${esc(content)}</p>` : ''}${isValidImage(image) ? `<img class="side-image ${context==='list'?'side-image-thumb':'side-image-study'}" src="${image}" alt="Immagine della ${side==='front'?'domanda':'risposta'}" ${context==='list'?'loading="lazy"':''}>` : ''}`;
+}
+function imagePicker(side, label) {
+  return `<div class="image-picker form-field"><label for="image-${side}">${label} (facoltativa)</label>
+    <input id="image-${side}" class="image-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-image-side="${side}">
+    <small class="image-help">PNG, JPG, WEBP o GIF (i GIF vengono salvati come immagini statiche). L'immagine verrà ottimizzata per il salvataggio locale.</small>
+    <div id="image-preview-${side}" class="image-preview"></div>
+  </div>`;
+}
+function refreshImagePreview(side) {
+  const el = $(`#image-preview-${side}`); if (!el) return;
+  const image = editingImages[side];
+  el.innerHTML = isValidImage(image)
+    ? `<img src="${image}" alt="Anteprima dell'immagine"><button class="button button-outline button-small" type="button" data-action="remove-image" data-side="${side}">× Rimuovi immagine</button>`
+    : '<span class="no-image">Nessuna immagine selezionata</span>';
+}
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(Error('Lettura immagine non riuscita'));
+    reader.readAsDataURL(file);
+  });
+}
+function convertImage(file) {
+  if (!file || !IMAGE_MIMES.includes(file.type)) return Promise.reject(Error('Formato non supportato: scegli PNG, JPG, WEBP o GIF.'));
+  if (file.size > MAX_ORIGINAL_IMAGE) return Promise.reject(Error('L’immagine originale supera 12 MB.'));
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    const release = () => URL.revokeObjectURL(objectUrl);
+    img.onerror = () => {release(); reject(Error('Impossibile aprire questa immagine.'));};
+    img.onload = async () => {
+      release();
+      try {
+        const ratio = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * ratio));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * ratio));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise(done => canvas.toBlob(done, 'image/webp', 0.9));
+        if (!blob) throw Error('Conversione immagine non riuscita.');
+        if (blob.size > MAX_EMBEDDED_IMAGE) throw Error('Immagine troppo grande anche dopo l’ottimizzazione (limite 3 MB).');
+        const encoded = await fileToDataUrl(blob);
+        if (!isValidImage(encoded)) throw Error('Formato immagine non valido.');
+        resolve(encoded);
+      } catch (e) { reject(e); }
+    };
+    img.src = objectUrl;
+  });
+}
+async function onImagePicked(input) {
+  const side = input.dataset.imageSide;
+  const file = input.files && input.files[0];
+  if (!file || !['front','back'].includes(side)) return;
+  imageBusy++;
+  const submit = $('#save-card-button');
+  if (submit) {submit.disabled=true; submit.textContent='Elaborazione immagine…';}
+  try {
+    const result = await convertImage(file);
+    if ($('#card-form')) {editingImages[side] = result; refreshImagePreview(side);toast('Immagine pronta da salvare.');}
+  } catch (e) { toast(e.message || 'Immagine non valida.', true); }
+  finally {
+    input.value=''; imageBusy--;
+    if (submit && $('#card-form')) {submit.disabled = imageBusy > 0;submit.textContent=editingCardId?'Salva modifiche':'Aggiungi carta';}
+  }
+}
 function cardsList(cards){
- if (!cards.length) return `<div class="empty-state compact"><div class="empty-icon">✦</div><h3>Nessuna flashcard, per ora</h3><p>Ogni carta ha una domanda e una risposta. Prova ad aggiungerne una.</p><button class="button button-primary" data-action="new-card" type="button">+ Prima flashcard</button></div>`;
- return `<div class="cards-list">${cards.map((card,i)=>`<article class="card-row"><div class="card-column"><small>DOMANDA ${i+1}</small><p>${esc(card.front)}</p>${card.needsReview?'<span class="review-badge">Da rivedere</span>':''}</div><div class="card-column"><small>RISPOSTA</small><p>${esc(card.back)}</p></div><div class="card-actions"><button class="icon-button" aria-label="Modifica carta" title="Modifica carta" type="button" data-action="edit-card" data-id="${esc(card.id)}">✎</button><button class="icon-button danger" aria-label="Elimina carta" title="Elimina carta" type="button" data-action="delete-card" data-id="${esc(card.id)}">×</button></div></article>`).join('')}</div>`;
+ if (!cards.length) return `<div class="empty-state compact"><div class="empty-icon">✦</div><h3>Nessuna flashcard, per ora</h3><p>Ogni lato può contenere testo, immagini o entrambi.</p><button class="button button-primary" data-action="new-card" type="button">+ Prima flashcard</button></div>`;
+ return `<div class="cards-list">${cards.map((card,i)=>`<article class="card-row"><div class="card-column"><small>DOMANDA ${i+1}</small>${cardSide(card,'front')}${card.needsReview?'<span class="review-badge">Da rivedere</span>':''}</div><div class="card-column"><small>RISPOSTA</small>${cardSide(card,'back')}</div><div class="card-actions"><button class="icon-button" aria-label="Modifica carta" title="Modifica carta" type="button" data-action="edit-card" data-id="${esc(card.id)}">✎</button><button class="icon-button danger" aria-label="Elimina carta" title="Elimina carta" type="button" data-action="delete-card" data-id="${esc(card.id)}">×</button></div></article>`).join('')}</div>`;
 }
 function filterCards(){
  const el = $('#card-search');
@@ -122,7 +266,16 @@ function cardModal(id=null){
  const deck=activeDeck(); if(!deck) return;
  editingCardId=id;
  const card=id?deck.cards.find(c=>c.id===id):null;
- modal(card?'Modifica flashcard':'Nuova flashcard',`<form id="card-form"><div class="form-field"><label for="card-front">Domanda / fronte</label><textarea id="card-front" name="front" required maxlength="5000" rows="4" placeholder="Scrivi la domanda o il concetto...">${esc(card?.front || '')}</textarea></div><div class="form-field"><label for="card-back">Risposta / retro</label><textarea id="card-back" name="back" required maxlength="10000" rows="5" placeholder="Scrivi la risposta o la spiegazione...">${esc(card?.back || '')}</textarea></div><div class="modal-footer"><button class="button button-outline" type="button" data-action="close-modal">Annulla</button><button class="button button-primary" type="submit">${card?'Salva modifiche':'Aggiungi carta'}</button></div></form>`);
+ editingImages = {front:card?.frontImage || null, back:card?.backImage || null};
+ imageBusy=0;
+ modal(card?'Modifica flashcard':'Nuova flashcard',`<form id="card-form">
+  <div class="form-field"><label for="card-front">Domanda / fronte</label><textarea id="card-front" name="front" maxlength="5000" rows="3" placeholder="Scrivi la domanda o aggiungi un'immagine…">${esc(card?.front || '')}</textarea></div>
+  ${imagePicker('front','Immagine della domanda')}
+  <div class="form-field"><label for="card-back">Risposta / retro</label><textarea id="card-back" name="back" maxlength="10000" rows="4" placeholder="Scrivi la risposta o aggiungi un'immagine…">${esc(card?.back || '')}</textarea></div>
+  ${imagePicker('back','Immagine della risposta')}
+  <div class="modal-footer"><button class="button button-outline" type="button" data-action="close-modal">Annulla</button><button id="save-card-button" class="button button-primary" type="submit">${card?'Salva modifiche':'Aggiungi carta'}</button></div>
+ </form>`);
+ refreshImagePreview('front');refreshImagePreview('back');
  $('#card-front').focus();
 }
 function commitDeck(form){
@@ -134,13 +287,21 @@ function commitDeck(form){
  else{const deck={id:uid(),name,description,color,createdAt:new Date().toISOString(),cards:[]};state.decks.unshift(deck);state.activeDeckId=deck.id;toast('Mazzo creato! Aggiungi la tua prima flashcard.');}
  save();closeModal();render();
 }
-function commitCard(form){
- const deck=activeDeck();if(!deck)return;
- const front=friendly(form.elements.front.value).slice(0,5000),back=friendly(form.elements.back.value).slice(0,10000);
- if(!front||!back){toast('Compila sia la domanda che la risposta.',true);return;}
- if(editingCardId){const card=deck.cards.find(c=>c.id===editingCardId);if(!card)return;Object.assign(card,{front,back,updatedAt:new Date().toISOString()});toast('Flashcard modificata.');}
- else{deck.cards.push({id:uid(),front,back,createdAt:new Date().toISOString(),needsReview:false,knownCount:0,reviewCount:0,lastReviewedAt:null});toast('Flashcard aggiunta.');}
- save();closeModal();render();
+async function commitCard(form){
+ const deck=activeDeck();if(!deck || imageBusy > 0) return;
+ const front=friendly(form.elements.front.value).slice(0,5000);
+ const back=friendly(form.elements.back.value).slice(0,10000);
+ const frontImage=editingImages.front, backImage=editingImages.back;
+ if ((!front && !frontImage) || (!back && !backImage)) {toast('Ogni lato deve avere almeno un testo o un’immagine.',true);return;}
+ if (editingCardId) {
+   const card=deck.cards.find(c=>c.id===editingCardId);if(!card)return;
+   Object.assign(card,{front,back,frontImage,backImage,updatedAt:new Date().toISOString()});
+ } else {
+   deck.cards.push({id:uid(),front,back,frontImage,backImage,createdAt:new Date().toISOString(),needsReview:false,knownCount:0,reviewCount:0,lastReviewedAt:null});
+ }
+ try {await save();toast(editingCardId?'Flashcard modificata.':'Flashcard aggiunta.');}
+ catch (e) {toast('Non è stato possibile salvare la carta: scarica un backup prima di chiudere.',true);}
+ closeModal();render();
 }
 function confirmDelete(kind,id=null){
  deleting={kind,id};
@@ -168,21 +329,19 @@ function studyPage(){
  const id=study.queue[study.index];const card=deck.cards.find(c=>c.id===id);
  if(!card){study.index++;return studyPage();}
  const percent=Math.round(study.mastered.size/study.total*100);
- return `<div class="page"><div class="study-top"><div><span class="eyebrow">MODALITÀ STUDIO</span><h1>${esc(deck.name)}</h1><p>Gira la carta e verifica quanto ricordi.</p></div><button class="button button-outline button-small" data-action="exit-study" type="button">← Esci</button></div>
+ return `<div class="page"><div class="study-top"><div><span class="eyebrow">MODALITÀ STUDIO</span><h1>${esc(deck.name)}</h1><p>Scegli «La so» o «Non la so» subito, oppure mostra la risposta prima di decidere.</p></div><button class="button button-outline button-small" data-action="exit-study" type="button">← Esci</button></div>
  <div class="study-progress"><span>${study.mastered.size} di ${study.total} carte acquisite</span><strong>${percent}%</strong></div><div class="progress-track"><div class="progress-fill" style="width:${percent}%"></div></div>
- <div class="flashcard-wrap"><div class="flashcard" id="study-card" role="button" aria-label="Gira la flashcard" tabindex="0" data-action="flip-card"><div class="flashcard-face"><div class="face-label">DOMANDA</div><div class="face-text">${esc(card.front)}</div><div class="face-hint">↻ Clicca sulla carta per vedere la risposta</div></div><div class="flashcard-face back"><div class="face-label">RISPOSTA</div><div class="face-text">${esc(card.back)}</div><div class="face-hint">↻ Clicca per tornare alla domanda</div></div></div></div>
- <div class="study-controls"><button class="button button-danger" data-action="mark-wrong" type="button" id="study-wrong" disabled>↻ Da rivedere</button><button class="button button-subtle" data-action="flip-card" type="button" id="study-toggle">Mostra risposta</button><button class="button button-primary" data-action="mark-correct" type="button" id="study-correct" disabled>✓ La so</button></div>
- <p class="keyboard-tip">Scorciatoie: <strong>Spazio</strong> gira · <strong>1</strong> da rivedere · <strong>2</strong> la so · <strong>Esc</strong> esci</p></div>`;
+ <div class="flashcard-wrap"><div class="flashcard" id="study-card" role="button" aria-label="Gira la flashcard" tabindex="0" data-action="flip-card"><div class="flashcard-face"><div class="face-label">DOMANDA</div><div class="face-body">${cardSide(card,'front','study')}</div><div class="face-hint">↻ Clicca sulla carta per vedere la risposta</div></div><div class="flashcard-face back"><div class="face-label">RISPOSTA</div><div class="face-body">${cardSide(card,'back','study')}</div><div class="face-hint">↻ Clicca per tornare alla domanda</div></div></div></div>
+ <div class="study-controls"><button class="button button-danger" data-action="mark-wrong" type="button" id="study-wrong">✕ Non la so</button><button class="button button-subtle" data-action="flip-card" type="button" id="study-toggle">Mostra risposta</button><button class="button button-primary" data-action="mark-correct" type="button" id="study-correct">✓ La so</button></div>
+ <p class="keyboard-tip">Scorciatoie: <strong>Spazio</strong> gira · <strong>1</strong> non la so · <strong>2</strong> la so · <strong>Esc</strong> esci</p></div>`;
 }
 function flipCard(){if(!study||study.index>=study.queue.length)return;
  study.flipped=!study.flipped;
  $('#study-card')?.classList.toggle('flipped',study.flipped);
- $('#study-wrong').disabled=!study.flipped;
- $('#study-correct').disabled=!study.flipped;
  $('#study-toggle').textContent=study.flipped?'Mostra domanda':'Mostra risposta';
 }
 function answerCard(correct){
- if(!study||!study.flipped)return;
+ if(!study||study.index>=study.queue.length)return;
  const deck=deckById(study.deckId);if(!deck)return;
  const id=study.queue[study.index];const card=deck.cards.find(c=>c.id===id);
  if(!card){study.index++;render();return;}
@@ -204,31 +363,35 @@ function makeDownload(content,fileName){
 }
 function fileSafe(name){return (name||'mazzo').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').slice(0,60).replace(/^-|-$/g,'')||'mazzo';}
 function exportDeck(){const deck=activeDeck();if(!deck)return;
- makeDownload({format:'memodeck',version:1,type:'deck',exportedAt:new Date().toISOString(),deck},`flashcard-${fileSafe(deck.name)}.json`);
+ makeDownload({format:'memodeck',version:2,type:'deck',exportedAt:new Date().toISOString(),deck},`flashcard-${fileSafe(deck.name)}.json`);
 }
 function exportAll(){if(!state.decks.length){toast('Non ci sono mazzi da esportare.',true);return;}
- makeDownload({format:'memodeck',version:1,type:'backup',exportedAt:new Date().toISOString(),decks:state.decks},'memodeck-backup.json');
+ makeDownload({format:'memodeck',version:2,type:'backup',exportedAt:new Date().toISOString(),decks:state.decks},'memodeck-backup.json');
 }
 function sanitiseIncomingDeck(d){
  if(!d||typeof d.name!=='string'||!Array.isArray(d.cards)||d.cards.length>20000)throw new Error('Mazzo non valido');
  const name=d.name.trim().slice(0,100);if(!name)throw Error('Nome del mazzo mancante');
  return {id:uid(),name,description:friendly(d.description).slice(0,500),color:COLORS.includes(d.color)?d.color:COLORS[0],createdAt:new Date().toISOString(),cards:d.cards.map(c=>{
-  if(!c||typeof c.front!=='string'||typeof c.back!=='string'||!c.front.trim()||!c.back.trim())throw new Error('Flashcard non valida');
-  return {id:uid(),front:c.front.slice(0,5000),back:c.back.slice(0,10000),createdAt:new Date().toISOString(),needsReview:!!c.needsReview,knownCount:Number.isSafeInteger(c.knownCount)&&c.knownCount>=0?c.knownCount:0,reviewCount:Number.isSafeInteger(c.reviewCount)&&c.reviewCount>=0?c.reviewCount:0,lastReviewedAt:typeof c.lastReviewedAt==='string'?c.lastReviewedAt:null};
+  if(!c||typeof c.front!=='string'||typeof c.back!=='string')throw new Error('Flashcard non valida');
+  if (c.frontImage != null && !isValidImage(c.frontImage)) throw Error('Immagine domanda non valida');
+  if (c.backImage != null && !isValidImage(c.backImage)) throw Error('Immagine risposta non valida');
+  if ((!c.front.trim() && !c.frontImage) || (!c.back.trim() && !c.backImage)) throw new Error('Ogni lato deve avere testo o immagine');
+  return {id:uid(),front:c.front.slice(0,5000),back:c.back.slice(0,10000),frontImage:c.frontImage || null,backImage:c.backImage || null,createdAt:new Date().toISOString(),needsReview:!!c.needsReview,knownCount:Number.isSafeInteger(c.knownCount)&&c.knownCount>=0?c.knownCount:0,reviewCount:Number.isSafeInteger(c.reviewCount)&&c.reviewCount>=0?c.reviewCount:0,lastReviewedAt:typeof c.lastReviewedAt==='string'?c.lastReviewedAt:null};
  })};
 }
 async function importFile(file){
  if(!file)return;
- if(file.size>8*1024*1024){toast('File troppo grande (massimo 8 MB).',true);return;}
+ if(file.size>MAX_IMPORT_FILE){toast('File troppo grande (massimo 120 MB).',true);return;}
  try{
   const parsed=JSON.parse(await file.text());
-  if(parsed?.format!=='memodeck'||parsed?.version!==1)throw Error('Questo file non è un backup MemoDeck valido.');
+  if(parsed?.format!=='memodeck'||![1,2].includes(parsed?.version))throw Error('Questo file non è un backup MemoDeck valido.');
   const inputDecks=parsed.type==='deck'?[parsed.deck]:parsed.type==='backup'?parsed.decks:null;
   if(!Array.isArray(inputDecks)||inputDecks.length>100)throw Error('Elenco dei mazzi non valido.');
   const decks=inputDecks.map(sanitiseIncomingDeck); // Valida tutto prima di modificare i dati salvati.
   if(!decks.length)throw Error('Il file non contiene mazzi.');
-  state.decks=[...decks,...state.decks];state.activeDeckId=decks[0].id;study=null;save();render();stopSidebar();
-  toast(`${decks.length} ${decks.length===1?'mazzo importato':'mazzi importati'} senza sovrascrivere i precedenti.`);
+  state.decks=[...decks,...state.decks];state.activeDeckId=decks[0].id;study=null;
+  await save();render();stopSidebar();
+  toast(`${decks.length} ${decks.length===1?'mazzo importato':'mazzi importati'} con tutte le immagini.`);
  }catch(e){console.error(e);toast(`Importazione fallita: ${e.message||'file non valido'}`,true);}
 }
 
@@ -258,6 +421,7 @@ document.addEventListener('click', (event)=>{
  case 'mark-correct':answerCard(true);break;
  case 'export-deck':exportDeck();break;
  case 'export-all':exportAll();break;
+ case 'remove-image': if (['front','back'].includes(trigger.dataset.side)) {editingImages[trigger.dataset.side]=null;refreshImagePreview(trigger.dataset.side);}break;
  case 'go-home':goHome();break;
  }
 });
@@ -266,6 +430,7 @@ document.addEventListener('submit',event=>{
  if(event.target.id==='card-form'){event.preventDefault();commitCard(event.target);}
 });
 document.addEventListener('input',event=>{if(event.target.id==='card-search')filterCards();});
+document.addEventListener('change',event=>{if(event.target.matches('[data-image-side]'))onImagePicked(event.target);});
 document.addEventListener('keydown',event=>{
  if(event.key==='Escape'&&!$('#modal-layer').hidden){closeModal();return;}
  if(event.key==='Escape'&&study){study=null;render();return;}
@@ -283,6 +448,5 @@ $('#sidebar-import').addEventListener('click',()=>$('#import-file').click());
 $('#import-file').addEventListener('change',async e=>{await importFile(e.target.files?.[0]);e.target.value='';});
 $('.brand').addEventListener('click',e=>{e.preventDefault();goHome();});
 
-// In caso di dati rimossi o mazzo attivo non valido, mostra la homepage.
-if(!deckById(state.activeDeckId))state.activeDeckId=null;
-render();
+// I mazzi legacy vengono migrati in IndexedDB prima del primo rendering.
+initialize();
