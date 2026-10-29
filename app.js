@@ -121,6 +121,26 @@ function deckById(id) {return state.decks.find(d=>d.id===id);}
 function activeDeck() {return deckById(state.activeDeckId);}
 function countCards() {return state.decks.reduce((sum,d)=>sum+d.cards.length,0);}
 function countReview() {return state.decks.reduce((sum,d)=>sum+d.cards.filter(c=>c.needsReview).length,0);}
+// Ogni carta compare in un solo gruppo, in base all'ultima risposta registrata.
+// I clic storici sono invece registrati separatamente, anche dopo più sessioni.
+function deckStats(deck) {
+  const known = deck.cards.filter(c => !!c.lastReviewedAt && !c.needsReview).length;
+  const unknown = deck.cards.filter(c => !!c.needsReview).length;
+  const unstudied = Math.max(0, deck.cards.length - known - unknown);
+  const totalAnswers = deck.cards.reduce((n,c)=>n+(Number.isSafeInteger(c.reviewCount) && c.reviewCount>0 ? c.reviewCount : 0),0);
+  const knownAnswers = deck.cards.reduce((n,c)=>n+(Number.isSafeInteger(c.knownCount) && c.knownCount>0 ? c.knownCount : 0),0);
+  return {known,unknown,unstudied,totalAnswers,knownAnswers,unknownAnswers:Math.max(0,totalAnswers-knownAnswers)};
+}
+function shuffleArray(array) {
+  for (let i=array.length-1;i>0;i--) {
+    const j=Math.floor(Math.random()*(i+1));
+    [array[i],array[j]]=[array[j],array[i]];
+  }
+  return array;
+}
+function shuffleControl(checked, where='deck') {
+  return `<label class="shuffle-control"><input type="checkbox" data-shuffle-toggle="${where}" ${checked?'checked':''}><span>Mescola le carte <small>Ordine casuale</small></span></label>`;
+}
 function chosenColor(d) {return COLORS.includes(d?.color) ? d.color : COLORS[0];}
 function tint(hex, alpha='20') {return `${hex}${alpha}`;}
 function shortName(name) {return name.length > 30 ? name.slice(0,30) + '…' : name;}
@@ -140,7 +160,8 @@ function render() {
 function metric(label,num,note){return `<div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${num}</div><div class="metric-note">${note}</div></div>`;}
 function deckTile(d) {
  const color = chosenColor(d);
- return `<button class="deck-tile" type="button" data-action="select-deck" data-id="${esc(d.id)}"><div class="tile-top"><span class="tile-icon" style="color:${color};background:${tint(color)}">▤</span><span class="tile-arrow">↗</span></div><div><h3>${esc(shortName(d.name))}</h3><p>${esc(d.description || 'Il tuo mazzo di flashcard')}</p></div><div class="tile-bottom">◫ ${d.cards.length} ${d.cards.length === 1 ? 'carta' : 'carte'}${d.cards.some(c=>c.needsReview) ? ` · ${d.cards.filter(c=>c.needsReview).length} da ripassare` : ''}</div></button>`;
+ const stats = deckStats(d);
+ return `<button class="deck-tile" type="button" data-action="select-deck" data-id="${esc(d.id)}"><div class="tile-top"><span class="tile-icon" style="color:${color};background:${tint(color)}">▤</span><span class="tile-arrow">↗</span></div><div><h3>${esc(shortName(d.name))}</h3><p>${esc(d.description || 'Il tuo mazzo di flashcard')}</p></div><div class="tile-bottom">◫ ${d.cards.length} ${d.cards.length === 1 ? 'carta' : 'carte'}</div><div class="tile-stats"><span class="known-pill">✓ ${stats.known} la so</span><span class="unknown-pill">✕ ${stats.unknown} non la so</span><span class="new-pill">${stats.unstudied} nuove</span></div></button>`;
 }
 function homePage() {
  return `<div class="page">
@@ -152,15 +173,14 @@ function homePage() {
  </div>`;
 }
 function deckPage(deck){
- const reviewed = deck.cards.filter(c=>c.lastReviewedAt).length;
- const known = deck.cards.filter(c=>c.lastReviewedAt&&!c.needsReview).length;
- const need = deck.cards.filter(c=>c.needsReview).length;
+ const stats=deckStats(deck);
  return `<div class="page">
    <div class="deck-header"><div><span class="eyebrow">IL TUO MAZZO</span><h1>${esc(deck.name)}</h1><p>${esc(deck.description || 'Aggiungi carte e inizia a ripassare.')}</p></div><div class="deck-buttons"><button class="button button-outline button-small" data-action="export-deck" type="button">↓ Esporta JSON</button><button class="button button-outline button-small" data-action="edit-deck" type="button">⚙ Gestisci</button><button class="button button-primary button-small" data-action="start-study" type="button" ${!deck.cards.length?'disabled':''}>▷ Inizia a studiare</button></div></div>
-   <div class="deck-stat-row"><div class="deck-stat"><strong>${deck.cards.length}</strong><small>Carte nel mazzo</small></div><div class="deck-stat"><strong class="green">${known}</strong><small>Conosciute all'ultimo ripasso</small></div><div class="deck-stat"><strong class="accent">${need}</strong><small>Da rivedere</small></div></div>
+   <div class="deck-stat-row"><div class="deck-stat"><strong>${deck.cards.length}</strong><small>Carte nel mazzo</small></div><div class="deck-stat"><strong class="green">${stats.known}</strong><small>La so</small></div><div class="deck-stat"><strong class="coral">${stats.unknown}</strong><small>Non la so</small></div><div class="deck-stat"><strong class="accent">${stats.unstudied}</strong><small>Mai studiate</small></div></div>
+   <p class="stats-explainer">Ogni carta è contata una volta, in base alla tua <strong>ultima risposta</strong>. Risposte registrate nel tempo: <strong>${stats.knownAnswers} «La so»</strong> · <strong>${stats.unknownAnswers} «Non la so»</strong>.</p>
    <div class="tools-row"><h2>Flashcard <span style="color:#aaa;font-size:12px">(${deck.cards.length})</span></h2><div class="tools-right"><input id="card-search" class="search" type="search" aria-label="Cerca flashcard" placeholder="⌕ Cerca una carta..."><button class="button button-primary button-small" type="button" data-action="new-card">+ Aggiungi carta</button></div></div>
    <div id="cards-container">${cardsList(deck.cards)}</div>
-   ${deck.cards.length ? `<div class="review-callout"><div><strong>Pronto per un ripasso?</strong><p>Segna subito quali carte conosci, oppure mostra la risposta prima di decidere. Le carte non conosciute ritornano durante la sessione.</p></div><button class="button button-primary" data-action="start-study" type="button">▷ Avvia ripasso</button></div>`:''}
+   ${deck.cards.length ? `<div class="review-callout"><div><strong>Pronto per un ripasso?</strong><p>«La so» e «Non la so» vengono entrambe contate e fanno passare alla prossima carta. Nessuna carta si ripete durante la sessione.</p>${shuffleControl(!!deck.shuffleStudy)}</div><button class="button button-primary" data-action="start-study" type="button">▷ Avvia ripasso</button></div>`:''}
  </div>`;
 }
 // Immagini incorporate nel mazzo (data URL). Non vengono inviate a server esterni.
@@ -240,7 +260,7 @@ async function onImagePicked(input) {
 }
 function cardsList(cards){
  if (!cards.length) return `<div class="empty-state compact"><div class="empty-icon">✦</div><h3>Nessuna flashcard, per ora</h3><p>Ogni lato può contenere testo, immagini o entrambi.</p><button class="button button-primary" data-action="new-card" type="button">+ Prima flashcard</button></div>`;
- return `<div class="cards-list">${cards.map((card,i)=>`<article class="card-row"><div class="card-column"><small>DOMANDA ${i+1}</small>${cardSide(card,'front')}${card.needsReview?'<span class="review-badge">Da rivedere</span>':''}</div><div class="card-column"><small>RISPOSTA</small>${cardSide(card,'back')}</div><div class="card-actions"><button class="icon-button" aria-label="Modifica carta" title="Modifica carta" type="button" data-action="edit-card" data-id="${esc(card.id)}">✎</button><button class="icon-button danger" aria-label="Elimina carta" title="Elimina carta" type="button" data-action="delete-card" data-id="${esc(card.id)}">×</button></div></article>`).join('')}</div>`;
+ return `<div class="cards-list">${cards.map((card,i)=>`<article class="card-row"><div class="card-column"><small>DOMANDA ${i+1}</small>${cardSide(card,'front')}${card.needsReview?'<span class="review-badge">✕ Non la so</span>':card.lastReviewedAt?'<span class="known-badge">✓ La so</span>':'<span class="unseen-badge">Mai studiata</span>'}</div><div class="card-column"><small>RISPOSTA</small>${cardSide(card,'back')}</div><div class="card-actions"><button class="icon-button" aria-label="Modifica carta" title="Modifica carta" type="button" data-action="edit-card" data-id="${esc(card.id)}">✎</button><button class="icon-button danger" aria-label="Elimina carta" title="Elimina carta" type="button" data-action="delete-card" data-id="${esc(card.id)}">×</button></div></article>`).join('')}</div>`;
 }
 function filterCards(){
  const el = $('#card-search');
@@ -284,7 +304,7 @@ function commitDeck(form){
  const description=friendly(form.elements.description.value).slice(0,500);
  const color=COLORS.includes(form.elements.color.value)?form.elements.color.value:COLORS[0];
  if(editingDeckId){const deck=deckById(editingDeckId);if(!deck)return;Object.assign(deck,{name,description,color});toast('Mazzo aggiornato.');}
- else{const deck={id:uid(),name,description,color,createdAt:new Date().toISOString(),cards:[]};state.decks.unshift(deck);state.activeDeckId=deck.id;toast('Mazzo creato! Aggiungi la tua prima flashcard.');}
+ else{const deck={id:uid(),name,description,color,shuffleStudy:false,createdAt:new Date().toISOString(),cards:[]};state.decks.unshift(deck);state.activeDeckId=deck.id;toast('Mazzo creato! Aggiungi la tua prima flashcard.');}
  save();closeModal();render();
 }
 async function commitCard(form){
@@ -317,22 +337,40 @@ function commitDelete(){if(!deleting)return;
 function startStudy(){
  const deck=activeDeck();if(!deck||!deck.cards.length)return;
  const queue=deck.cards.map(c=>c.id);
- for(let i=queue.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[queue[i],queue[j]]=[queue[j],queue[i]];}
- study={deckId:deck.id,queue,index:0,flipped:false,mastered:new Set(),total:queue.length,retries:0,answered:0};
+ if(deck.shuffleStudy)shuffleArray(queue);
+ study={deckId:deck.id,queue,index:0,flipped:false,total:queue.length,answered:0,sessionKnown:0,sessionUnknown:0};
  render();window.scrollTo(0,0);
+}
+// Puoi cambiare l'ordine anche durante il ripasso: la domanda corrente rimane,
+// soltanto quelle non ancora viste vengono riordinate, senza ripetizioni.
+function setStudyShuffle(enabled) {
+ const deck=activeDeck(); if(!deck)return;
+ deck.shuffleStudy=enabled;
+ if(study && study.deckId===deck.id && study.index < study.queue.length) {
+   const currentAndDone=study.queue.slice(0,study.index+1);
+   const remaining=study.queue.slice(study.index+1);
+   if(enabled)shuffleArray(remaining);
+   else {
+     const position=new Map(deck.cards.map((c,i)=>[c.id,i]));
+     remaining.sort((a,b)=>(position.get(a)??Infinity)-(position.get(b)??Infinity));
+   }
+   study.queue=currentAndDone.concat(remaining);
+ }
+ save();render();
 }
 function studyPage(){
  const deck=deckById(study.deckId);if(!deck){study=null;return homePage();}
  if(study.index>=study.queue.length){
-  return `<div class="page"><div class="study-finish"><div class="finish-icon">✦</div><h2>Ottimo ripasso!</h2><p>Hai completato tutte le <strong>${study.total}</strong> carte del mazzo <strong>${esc(deck.name)}</strong>. Hai segnato <strong>${study.retries}</strong> ${study.retries===1?'risposta':'risposte'} da rivedere durante la sessione.</p><button class="button button-primary" type="button" data-action="restart-study">▷ Ripassa ancora</button><button class="button button-outline" type="button" data-action="exit-study">Torna al mazzo</button></div></div>`;
+  return `<div class="page"><div class="study-finish"><div class="finish-icon">✦</div><h2>Ripasso completato!</h2><p>Hai studiato tutte le <strong>${study.total}</strong> carte del mazzo <strong>${esc(deck.name)}</strong>. Anche le risposte «Non la so» sono state conteggiate.</p><div class="finish-stats"><div><strong class="green">${study.sessionKnown}</strong><small>La so</small></div><div><strong class="coral">${study.sessionUnknown}</strong><small>Non la so</small></div></div><button class="button button-primary" type="button" data-action="restart-study">▷ Ripassa ancora</button><button class="button button-outline" type="button" data-action="exit-study">Torna al mazzo</button></div></div>`;
  }
  const id=study.queue[study.index];const card=deck.cards.find(c=>c.id===id);
  if(!card){study.index++;return studyPage();}
- const percent=Math.round(study.mastered.size/study.total*100);
- return `<div class="page"><div class="study-top"><div><span class="eyebrow">MODALITÀ STUDIO</span><h1>${esc(deck.name)}</h1><p>Scegli «La so» o «Non la so» subito, oppure mostra la risposta prima di decidere.</p></div><button class="button button-outline button-small" data-action="exit-study" type="button">← Esci</button></div>
- <div class="study-progress"><span>${study.mastered.size} di ${study.total} carte acquisite</span><strong>${percent}%</strong></div><div class="progress-track"><div class="progress-fill" style="width:${percent}%"></div></div>
- <div class="flashcard-wrap"><div class="flashcard" id="study-card" role="button" aria-label="Gira la flashcard" tabindex="0" data-action="flip-card"><div class="flashcard-face"><div class="face-label">DOMANDA</div><div class="face-body">${cardSide(card,'front','study')}</div><div class="face-hint">↻ Clicca sulla carta per vedere la risposta</div></div><div class="flashcard-face back"><div class="face-label">RISPOSTA</div><div class="face-body">${cardSide(card,'back','study')}</div><div class="face-hint">↻ Clicca per tornare alla domanda</div></div></div></div>
- <div class="study-controls"><button class="button button-danger" data-action="mark-wrong" type="button" id="study-wrong">✕ Non la so</button><button class="button button-subtle" data-action="flip-card" type="button" id="study-toggle">Mostra risposta</button><button class="button button-primary" data-action="mark-correct" type="button" id="study-correct">✓ La so</button></div>
+ const percent=Math.round(study.answered/study.total*100);
+ return `<div class="page"><div class="study-top"><div><span class="eyebrow">MODALITÀ STUDIO</span><h1>${esc(deck.name)}</h1><p>Ogni risposta è conteggiata e passa alla prossima carta. Puoi girarla prima di decidere.</p></div><button class="button button-outline button-small" data-action="exit-study" type="button">← Esci</button></div>
+ <div class="study-options">${shuffleControl(!!deck.shuffleStudy,'study')}<div class="live-study-stats"><span class="known-pill">✓ ${study.sessionKnown} la so</span><span class="unknown-pill">✕ ${study.sessionUnknown} non la so</span></div></div>
+ <div class="study-progress"><span>${study.answered} di ${study.total} carte studiate</span><strong>${percent}%</strong></div><div class="progress-track"><div class="progress-fill" style="width:${percent}%"></div></div>
+ <div class="flashcard-wrap"><div class="flashcard ${study.flipped?'flipped':''}" id="study-card" role="button" aria-label="Gira la flashcard" tabindex="0" data-action="flip-card"><div class="flashcard-face"><div class="face-label">DOMANDA</div><div class="face-body">${cardSide(card,'front','study')}</div><div class="face-hint">↻ Clicca sulla carta per vedere la risposta</div></div><div class="flashcard-face back"><div class="face-label">RISPOSTA</div><div class="face-body">${cardSide(card,'back','study')}</div><div class="face-hint">↻ Clicca per tornare alla domanda</div></div></div></div>
+ <div class="study-controls"><button class="button button-danger" data-action="mark-wrong" type="button" id="study-wrong">✕ Non la so</button><button class="button button-subtle" data-action="flip-card" type="button" id="study-toggle">${study.flipped?'Mostra domanda':'Mostra risposta'}</button><button class="button button-primary" data-action="mark-correct" type="button" id="study-correct">✓ La so</button></div>
  <p class="keyboard-tip">Scorciatoie: <strong>Spazio</strong> gira · <strong>1</strong> non la so · <strong>2</strong> la so · <strong>Esc</strong> esci</p></div>`;
 }
 function flipCard(){if(!study||study.index>=study.queue.length)return;
@@ -347,8 +385,9 @@ function answerCard(correct){
  if(!card){study.index++;render();return;}
  card.reviewCount=(Number(card.reviewCount)||0)+1;
  card.lastReviewedAt=new Date().toISOString();
- if(correct){card.knownCount=(Number(card.knownCount)||0)+1;card.needsReview=false;study.mastered.add(id);}
- else{card.needsReview=true;study.queue.push(id);study.retries++;}
+ if(correct){card.knownCount=(Number(card.knownCount)||0)+1;card.needsReview=false;study.sessionKnown++;}
+ else{card.needsReview=true;study.sessionUnknown++;}
+ // La carta passa subito: non torna in fondo alla coda, ma resta segnata «Non la so».
  study.answered++;study.index++;study.flipped=false;save();render();
 }
 
@@ -371,7 +410,7 @@ function exportAll(){if(!state.decks.length){toast('Non ci sono mazzi da esporta
 function sanitiseIncomingDeck(d){
  if(!d||typeof d.name!=='string'||!Array.isArray(d.cards)||d.cards.length>20000)throw new Error('Mazzo non valido');
  const name=d.name.trim().slice(0,100);if(!name)throw Error('Nome del mazzo mancante');
- return {id:uid(),name,description:friendly(d.description).slice(0,500),color:COLORS.includes(d.color)?d.color:COLORS[0],createdAt:new Date().toISOString(),cards:d.cards.map(c=>{
+ return {id:uid(),name,description:friendly(d.description).slice(0,500),color:COLORS.includes(d.color)?d.color:COLORS[0],shuffleStudy:!!d.shuffleStudy,createdAt:new Date().toISOString(),cards:d.cards.map(c=>{
   if(!c||typeof c.front!=='string'||typeof c.back!=='string')throw new Error('Flashcard non valida');
   if (c.frontImage != null && !isValidImage(c.frontImage)) throw Error('Immagine domanda non valida');
   if (c.backImage != null && !isValidImage(c.backImage)) throw Error('Immagine risposta non valida');
@@ -430,7 +469,7 @@ document.addEventListener('submit',event=>{
  if(event.target.id==='card-form'){event.preventDefault();commitCard(event.target);}
 });
 document.addEventListener('input',event=>{if(event.target.id==='card-search')filterCards();});
-document.addEventListener('change',event=>{if(event.target.matches('[data-image-side]'))onImagePicked(event.target);});
+document.addEventListener('change',event=>{if(event.target.matches('[data-image-side]'))onImagePicked(event.target);if(event.target.matches('[data-shuffle-toggle]'))setStudyShuffle(event.target.checked);});
 document.addEventListener('keydown',event=>{
  if(event.key==='Escape'&&!$('#modal-layer').hidden){closeModal();return;}
  if(event.key==='Escape'&&study){study=null;render();return;}
