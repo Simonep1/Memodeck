@@ -208,3 +208,7 @@
 .math-text mjx-container svg { fill: currentColor; }
 .math-help { display: block; margin: -0.35rem 0 0.6rem; color: var(--muted, #667085); font-size: 12px; }
 .math-help code { font-size: 12px; padding: 1px 4px; border-radius: 4px; background: rgba(120, 99, 232, 0.11); }
+
+/* Comando di shuffle accessibile, anche in modalita studio */
+.shuffle-options {display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.shuffle-options .reshuffle-button {white-space:nowrap}
