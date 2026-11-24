@@ -212,3 +212,37 @@
 /* Comando di shuffle accessibile, anche in modalita studio */
 .shuffle-options {display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .shuffle-options .reshuffle-button {white-space:nowrap}
+
+/* MemoDeck 9: testo + immagine devono restare entrambi visibili.
+   Il contenuto scorre invece di comprimere l'immagine fino a nasconderla. */
+.flashcard-face .face-body {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  text-align: center;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.flashcard-face .face-body .side-text {
+  display: block;
+  width: 100%;
+  margin: 0;
+}
+.flashcard-face .face-body .side-image-study {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 245px;
+  margin: 14px auto 0;
+  object-fit: contain;
+  flex: none;
+  min-height: initial;
+}
+@media (max-width: 700px) {
+  .flashcard-face .face-body .side-image-study { max-height: 230px; }
+}
