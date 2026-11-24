@@ -179,6 +179,19 @@ function render() {
   $('#sidebar-backup').disabled = state.decks.length===0 && state.groups.length===0;
   $('#breadcrumb-current').textContent = study ? 'Modalità studio' : activeDeck()?.name || activeGroup()?.name || 'Panoramica';
   $('#main-content').innerHTML = study ? studyPage() : activeDeck() ? deckPage(activeDeck()) : activeGroup() ? groupPage(activeGroup()) : homePage();
+  typesetMath($('#main-content'));
+}
+
+// LaTeX viene interpretato esclusivamente come formula da MathJax locale.
+// Nessun contenuto viene inviato online. I testi rimangono invariati nei backup JSON.
+function typesetMath(root) {
+  if (!root || !window.MathJax) return;
+  const mj = window.MathJax;
+  const ready = mj.startup?.promise || Promise.resolve();
+  ready.then(() => {
+    if (root.isConnected && typeof mj.typesetPromise === 'function')
+      return mj.typesetPromise([root]);
+  }).catch(err => console.warn('Formula LaTeX non valida:', err));
 }
 
 function metric(label,num,note){return `<div class="metric"><div class="metric-label">${label}</div><div class="metric-value">${num}</div><div class="metric-note">${note}</div></div>`;}
@@ -232,7 +245,7 @@ function isValidImage(src) {
 function cardSide(card, side, context='list') {
   const content = side === 'front' ? card.front : card.back;
   const image = side === 'front' ? card.frontImage : card.backImage;
-  return `${content ? `<p class="side-text">${esc(content)}</p>` : ''}${isValidImage(image) ? `<img class="side-image ${context==='list'?'side-image-thumb':'side-image-study'}" src="${image}" alt="Immagine della ${side==='front'?'domanda':'risposta'}" ${context==='list'?'loading="lazy"':''}>` : ''}`;
+  return `${content ? `<div class="side-text math-text">${esc(content)}</div>` : ''}${isValidImage(image) ? `<img class="side-image ${context==='list'?'side-image-thumb':'side-image-study'}" src="${image}" alt="Immagine della ${side==='front'?'domanda':'risposta'}" ${context==='list'?'loading="lazy"':''}>` : ''}`;
 }
 function imagePicker(side, label) {
   return `<div class="image-picker form-field"><label for="image-${side}">${label} (facoltativa)</label>
@@ -310,6 +323,7 @@ function filterCards(){
  const q=el.value.trim().toLocaleLowerCase('it');
  const matches=deck.cards.filter(c=>c.front.toLocaleLowerCase('it').includes(q)||c.back.toLocaleLowerCase('it').includes(q));
  $('#cards-container').innerHTML=matches.length ? cardsList(matches) : '<div class="empty-state compact"><h3>Nessun risultato</h3><p>Prova un altro termine di ricerca.</p></div>';
+ typesetMath($('#cards-container'));
 }
 function setActive(id){if (!deckById(id)) return;state.activeDeckId=id;state.activeGroupId=null;study=null;save();render();stopSidebar();window.scrollTo(0,0);}
 function selectGroup(id){if (!groupById(id)) return;state.activeGroupId=id;state.activeDeckId=null;study=null;save();render();stopSidebar();window.scrollTo(0,0);}
@@ -347,7 +361,8 @@ function cardModal(id=null){
  editingImages = {front:card?.frontImage || null, back:card?.backImage || null};
  imageBusy=0;
  modal(card?'Modifica flashcard':'Nuova flashcard',`<form id="card-form">
-  <div class="form-field"><label for="card-front">Domanda / fronte</label><textarea id="card-front" name="front" maxlength="5000" rows="3" placeholder="Scrivi la domanda o aggiungi un'immagine…">${esc(card?.front || '')}</textarea></div>
+  <div class="form-field"><label for="card-front">Domanda / fronte</label><textarea id="card-front" name="front" maxlength="5000" rows="3" placeholder="Scrivi la domanda o una formula LaTeX…">${esc(card?.front || '')}</textarea></div>
+  <small class="math-help">Puoi usare <code>$...$</code> per le formule in linea e <code>$$...$$</code> per le formule centrate.</small>
   ${imagePicker('front','Immagine della domanda')}
   <div class="form-field"><label for="card-back">Risposta / retro</label><textarea id="card-back" name="back" maxlength="10000" rows="4" placeholder="Scrivi la risposta o aggiungi un'immagine…">${esc(card?.back || '')}</textarea></div>
   ${imagePicker('back','Immagine della risposta')}
