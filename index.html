@@ -3,11 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f6f7fb">
+  <meta name="theme-color" content="#f6f7fb" id="theme-meta">
+  <script>try { const t = localStorage.getItem("memodeck-theme"); document.documentElement.dataset.theme = t === "light" || t === "dark" ? t : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); } catch(e) { document.documentElement.dataset.theme = "light"; }</script>
   <meta name="description" content="Crea flashcard con testo e immagini, ripassale e salvale localmente in JSON. Nessun account necessario.">
   <title>MemoDeck</title>
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=6">
   <script src="app.js?v=5" defer></script>
+  <script src="theme.js?v=6" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -32,10 +34,10 @@
     <div class="content">
       <header class="topbar">
         <div class="topbar-left"><button class="mobile-menu" id="mobile-menu" aria-label="Apri menu" type="button">☰</button><span class="breadcrumb">La mia libreria</span><span class="breadcrumb-separator">/</span><span class="breadcrumb-current" id="breadcrumb-current">Panoramica</span></div>
-        <div class="topbar-right"><span class="offline-status"><span class="status-dot"></span> Dati locali</span><button class="button button-small button-outline topbar-add" id="topbar-new-deck" type="button">+ Nuovo mazzo</button></div>
+        <div class="topbar-right"><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Attiva modalità scura" title="Cambia tema"><span id="theme-icon" aria-hidden="true">☾</span><span id="theme-label">Tema scuro</span></button><span class="offline-status"><span class="status-dot"></span> Dati locali</span><button class="button button-small button-outline topbar-add" id="topbar-new-deck" type="button">+ Nuovo mazzo</button></div>
       </header>
       <main id="main-content" tabindex="-1"></main>
-      <footer class="page-footer">MemoDeck · Esporta un JSON per conservarle fuori dal browser o trasferirle.</footer>
+      <footer class="page-footer">MemoDeck . Esporta un JSON per conservarle fuori dal browser o trasferirle.</footer>
     </div>
   </div>
 
