@@ -59,3 +59,28 @@
 .finish-stats strong{display:block;font-size:27px}
 .finish-stats small{font-size:11px;color:#8990a0}
 @media(max-width:700px){.deck-stat-row{grid-template-columns:repeat(2,minmax(0,1fr))}.deck-stat{padding:15px}.stats-explainer{margin-bottom:20px}.study-options{align-items:flex-start}}
+
+/* MemoDeck 5 · cartelle e ripasso combinato */
+.nav-subheading{font-size:9px;color:#a3a7b5;font-weight:800;letter-spacing:1.3px;padding:11px 12px 5px}
+.nav-separator{border-top:1px solid #eef0f5;margin-top:14px;padding-top:17px}
+.sidebar-folder{margin-bottom:4px}.sidebar-folder-decks{padding-left:12px;margin-left:17px;border-left:1px solid #ece8ff}
+.sidebar-folder-decks .deck-nav-item{padding:9px 10px;font-size:11px}
+.folder-nav-item{width:100%;border:0;background:transparent;display:flex;align-items:center;gap:10px;padding:11px;border-radius:10px;text-align:left;color:#60677a;font-weight:750;font-size:12px}
+.folder-nav-item:hover{background:#f7f8fa}.folder-nav-item.active{background:#f1eeff;color:#604bd5}
+.folder-icon{display:inline-flex;align-items:center;justify-content:center;color:#7966de;font-size:17px;width:15px}
+.folder-nav-item .deck-nav-count{margin-left:auto;color:#9fa5b7;font-size:10px}
+.nav-empty{font-size:10px;color:#b3b7c5;line-height:1.6;padding:10px 13px}
+#sidebar-new-group{margin-top:12px;margin-bottom:5px;color:#6b5acb;background:#f9f7ff;border-color:#ded9f9}
+#sidebar-new-deck{margin-top:4px}
+.hero-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.hero .button-hero-alt{background:transparent;color:#f4f0ff;border:1px solid #bfb0ed}
+.hero .button-hero-alt:hover{background:#ffffff20}
+.folder-suggestion{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:21px;background:#fff;border:1px dashed #d6d1f2;border-radius:14px}
+.folder-suggestion strong{font-size:14px;color:#3e4260}
+.folder-suggestion p{font-size:11px;line-height:1.65;color:#8c93a4;margin:7px 0 0}
+.group-tile{border-color:#e5dfff}
+.group-inline-link{font-size:10px;color:#6958c7;font-weight:750;border:0;background:transparent;padding:0;cursor:pointer;text-decoration:underline}
+.muted-count{color:#a3a6b6;font-size:12px;font-weight:500}
+.muted-empty{border:1px dashed #e6e8f0;background:#fafbfe;border-radius:12px;padding:20px;color:#9ba0b0;font-size:12px}
+.form-field select{width:100%;border:1px solid #dfe2ed;border-radius:10px;padding:12px 13px;background:#fff;color:#30374e;font-size:13px}
+@media(max-width:700px){.folder-suggestion{flex-wrap:wrap}.hero-actions .button{padding:12px 14px}.sidebar-folder-decks{padding-left:7px;margin-left:13px}}
