@@ -6,9 +6,18 @@
   <meta name="theme-color" content="#f6f7fb" id="theme-meta">
   <script>try { const t = localStorage.getItem("memodeck-theme"); document.documentElement.dataset.theme = t === "light" || t === "dark" ? t : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); } catch(e) { document.documentElement.dataset.theme = "light"; }</script>
   <meta name="description" content="Crea flashcard con testo e immagini, ripassale e salvale localmente in JSON. Nessun account necessario.">
-  <title>MemoDeck</title>
-  <link rel="stylesheet" href="styles.css?v=6">
-  <script src="app.js?v=5" defer></script>
+  <title>MemoDeck </title>
+  <link rel="stylesheet" href="styles.css?v=7">
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']], processEscapes: true, packages: {'[+]': ['noerrors']} },
+      svg: { fontCache: 'local' },
+      options: { enableMenu: false, skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+      startup: { typeset: false }
+    };
+  </script>
+  <script src="vendor/mathjax-tex-svg.js?v=7" defer></script>
+  <script src="app.js?v=7" defer></script>
   <script src="theme.js?v=6" defer></script>
 </head>
 <body>
@@ -37,7 +46,7 @@
         <div class="topbar-right"><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Attiva modalità scura" title="Cambia tema"><span id="theme-icon" aria-hidden="true">☾</span><span id="theme-label">Tema scuro</span></button><span class="offline-status"><span class="status-dot"></span> Dati locali</span><button class="button button-small button-outline topbar-add" id="topbar-new-deck" type="button">+ Nuovo mazzo</button></div>
       </header>
       <main id="main-content" tabindex="-1"></main>
-      <footer class="page-footer">MemoDeck . Esporta un JSON per conservarle fuori dal browser o trasferirle.</footer>
+      <footer class="page-footer">MemoDeck · Flashcard e immagini si salvano in questo browser. Esporta un JSON per conservarle fuori dal browser o trasferirle.</footer>
     </div>
   </div>
 
