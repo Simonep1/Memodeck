@@ -200,3 +200,11 @@
 :root[data-theme="dark"] .hero .button-hero-alt { background:transparent; color:#f4f0ff; }
 :root[data-theme="dark"] .hero .button-hero-alt:hover { background:#ffffff20; }
 :root[data-theme="dark"] .card-column:nth-child(2) { border-color:#334057; }
+
+/* v7: formule matematiche in modalità chiara/scura */
+.math-text { overflow-wrap: anywhere; min-width: 0; }
+.math-text mjx-container[display="true"] { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: .35rem 0; }
+.math-text mjx-container { max-width: 100%; }
+.math-text mjx-container svg { fill: currentColor; }
+.math-help { display: block; margin: -0.35rem 0 0.6rem; color: var(--muted, #667085); font-size: 12px; }
+.math-help code { font-size: 12px; padding: 1px 4px; border-radius: 4px; background: rgba(120, 99, 232, 0.11); }
