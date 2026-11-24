@@ -1,7 +1,6 @@
 'use strict';
 
-// MemoDeck: il codice del sito viene servito da GitHub Pages;
-// i contenuti dell'utente vivono solo nel suo browser o nei JSON esportati.
+
 const STORAGE_KEY = 'memodeck.data.v1'; // Dati delle versioni precedenti, migrati senza cancellarli.
 const DB_NAME = 'memodeck-local-v2';
 const DB_STORE = 'app';
@@ -150,6 +149,7 @@ function deckStats(deck) {
   const knownAnswers = deck.cards.reduce((n,c)=>n+(Number.isSafeInteger(c.knownCount) && c.knownCount>0 ? c.knownCount : 0),0);
   return {known,unknown,unstudied,totalAnswers,knownAnswers,unknownAnswers:Math.max(0,totalAnswers-knownAnswers)};
 }
+// Fisher–Yates: non altera la disposizione salvata dei mazzi.
 function shuffleArray(array) {
   for (let i=array.length-1;i>0;i--) {
     const j=Math.floor(Math.random()*(i+1));
@@ -157,8 +157,20 @@ function shuffleArray(array) {
   }
   return array;
 }
+// Quando si preme "Rimescola", evita di lasciare esattamente lo stesso ordine
+// se ci sono almeno due carte ancora da vedere.
+function reshuffleArray(array) {
+  if (array.length < 2) return array;
+  const before=array.map(x=>`${x.deckId}:${x.cardId}`);
+  shuffleArray(array);
+  if (array.every((x,i)=>`${x.deckId}:${x.cardId}`===before[i])) {
+    [array[0],array[1]]=[array[1],array[0]];
+  }
+  return array;
+}
 function shuffleControl(checked, where='deck') {
-  return `<label class="shuffle-control"><input type="checkbox" data-shuffle-toggle="${where}" ${checked?'checked':''}><span>Mescola le carte <small>Ordine casuale</small></span></label>`;
+  const button = checked ? `<button class="button button-outline button-small reshuffle-button" data-action="reshuffle-study" type="button" title="Genera un nuovo ordine casuale">↻ Rimescola</button>` : '';
+  return `<div class="shuffle-options"><label class="shuffle-control"><input type="checkbox" data-shuffle-toggle="${where}" ${checked?'checked':''}><span>Mescola le carte <small>${checked?'Ordine casuale attivo':'Ordine originale'}</small></span></label>${button}</div>`;
 }
 function chosenColor(d) {return COLORS.includes(d?.color) ? d.color : COLORS[0];}
 function tint(hex, alpha='20') {return `${hex}${alpha}`;}
@@ -426,29 +438,46 @@ function startStudy(type='deck'){
   ? decksInGroup(owner.id).flatMap(d=>d.cards.map(c=>({deckId:d.id,cardId:c.id})))
   : owner.cards.map(c=>({deckId:owner.id,cardId:c.id}));
  if(!queue.length)return;
- if(owner.shuffleStudy)shuffleArray(queue);
+ if(owner.shuffleStudy)reshuffleArray(queue);
  study={type,ownerId:owner.id,queue,index:0,flipped:false,total:queue.length,answered:0,sessionKnown:0,sessionUnknown:0};
  render();window.scrollTo(0,0);
 }
-// Mescoliamo soltanto le carte ancora da vedere; la carta attuale non cambia.
+// L'ordine "originale" è quello delle carte nel mazzo; per una cartella,
+// quello dei mazzi nella cartella e delle relative carte.
+function naturalStudyOrder(type,owner) {
+ return type==='group'
+   ? decksInGroup(owner.id).flatMap(d=>d.cards.map(c=>({deckId:d.id,cardId:c.id})))
+   : owner.cards.map(c=>({deckId:owner.id,cardId:c.id}));
+}
+function updateRemainingOrder(enabled,forceReshuffle=false) {
+ if (!study || study.index>=study.queue.length) return;
+ const context=studyContext();if(!context)return;
+ const start=study.index+1; // Non cambiare la domanda visibile o quelle completate.
+ const remaining=study.queue.slice(start);
+ if(enabled) {
+   reshuffleArray(remaining);
+ } else {
+   const order=naturalStudyOrder(study.type,context.owner);
+   const positions=new Map(order.map((item,i)=>[`${item.deckId}:${item.cardId}`,i]));
+   remaining.sort((a,b)=>(positions.get(`${a.deckId}:${a.cardId}`)??Infinity)-(positions.get(`${b.deckId}:${b.cardId}`)??Infinity));
+ }
+ study.queue=study.queue.slice(0,start).concat(remaining);
+}
 function setStudyShuffle(enabled) {
  const context=studyContext();
  const owner=context?.owner || activeDeck() || activeGroup();
  if(!owner)return;
  owner.shuffleStudy=enabled;
- if(study && study.index < study.queue.length) {
-   const currentAndDone=study.queue.slice(0,study.index+1);
-   const remaining=study.queue.slice(study.index+1);
-   if(enabled)shuffleArray(remaining);
-   else {
-     const ordered=study.type==='group'
-       ? decksInGroup(owner.id).flatMap(d=>d.cards.map(c=>`${d.id}:${c.id}`))
-       : owner.cards.map(c=>`${owner.id}:${c.id}`);
-     const position=new Map(ordered.map((key,i)=>[key,i]));
-     remaining.sort((a,b)=>(position.get(`${a.deckId}:${a.cardId}`)??Infinity)-(position.get(`${b.deckId}:${b.cardId}`)??Infinity));
-   }
-   study.queue=currentAndDone.concat(remaining);
- }
+ updateRemainingOrder(enabled);
+ save();render();
+}
+function reshuffleStudy() {
+ const context=studyContext();
+ const owner=context?.owner || activeDeck() || activeGroup();
+ if(!owner)return;
+ // Se la modalita è disattivata, attivala al primo clic.
+ owner.shuffleStudy=true;
+ updateRemainingOrder(true,true);
  save();render();
 }
 function studyPage(){
@@ -573,6 +602,7 @@ document.addEventListener('click', (event)=>{
  }
  case 'start-study':startStudy('deck');break;
  case 'start-group-study':startStudy('group');break;
+ case 'reshuffle-study':reshuffleStudy();break;
  case 'restart-study':startStudy(study?.type||'deck');break;
  case 'exit-study':study=null;render();break;
  case 'flip-card':flipCard();break;
