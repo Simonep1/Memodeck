@@ -1,6 +1,7 @@
 'use strict';
 
-
+// MemoDeck: il codice del sito viene servito da GitHub Pages;
+// i contenuti dell'utente vivono solo nel suo browser o nei JSON esportati.
 const STORAGE_KEY = 'memodeck.data.v1'; // Dati delle versioni precedenti, migrati senza cancellarli.
 const DB_NAME = 'memodeck-local-v2';
 const DB_STORE = 'app';
@@ -568,11 +569,31 @@ async function importFile(file){
     d.groupId=idMap.get(input.groupId) || (parsed.type==='group'?groups[0]?.id:null) || null;
     return d;
   });
-  // Tutto viene convalidato prima di aggiornare il database, mantenendo i dati precedenti.
-  state.groups=[...groups,...state.groups];state.decks=[...decks,...state.decks];
-  state.activeGroupId=groups[0]?.id||null;state.activeDeckId=state.activeGroupId?null:(decks[0]?.id||null);study=null;
-  await save();render();stopSidebar();
-  toast(`Importati ${decks.length} mazzi e ${groups.length} cartelle, immagini comprese.`);
+  // L'importazione sostituisce completamente l'archivio corrente (non unisce i mazzi).
+  // Validazione e preparazione si completano prima di chiedere conferma.
+  if ((state.decks.length || state.groups.length) && !window.confirm(
+    'Importare questo JSON sostituirà TUTTI i mazzi e le cartelle attualmente salvati su questo dispositivo.\n\n' +
+    'I dati attuali verranno eliminati. Esporta prima un backup se vuoi conservarli.\n\nContinuare?'
+  )) return;
+  const previousState = state;
+  const previousStudy = study;
+  state = {
+    decks,
+    groups,
+    activeGroupId: groups[0]?.id || null,
+    activeDeckId: groups.length ? null : (decks[0]?.id || null)
+  };
+  study = null;
+  try {
+    await save();
+  } catch (saveError) {
+    // Se il nuovo archivio non viene salvato, l'interfaccia mantiene i dati precedenti.
+    state = previousState;
+    study = previousStudy;
+    throw saveError;
+  }
+  render();stopSidebar();
+  toast(`Archivio sostituito: ${decks.length} mazzi e ${groups.length} cartelle importati, immagini comprese.`);
  }catch(e){console.error(e);toast(`Importazione fallita: ${e.message||'file non valido'}`,true);}
 }
 
