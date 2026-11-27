@@ -585,7 +585,15 @@ async function importFile(file){
   };
   study = null;
   try {
-    await save();
+    // Attende la scrittura completa prima di confermare l'importazione.
+    if (db) {
+      await save();
+      // Evita che i mazzi legacy ricompaiano se IndexedDB viene azzerato.
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) { console.warn('Archivio legacy non eliminabile:', e); }
+    } else {
+      // In fallback localStorage la scrittura deve fallire esplicitamente se non riesce.
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
   } catch (saveError) {
     // Se il nuovo archivio non viene salvato, l'interfaccia mantiene i dati precedenti.
     state = previousState;
