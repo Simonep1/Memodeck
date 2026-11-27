@@ -255,10 +255,51 @@ function isValidImage(src) {
   return typeof src === 'string' && src.length <= MAX_EMBEDDED_IMAGE * 4 / 3 + 256 &&
     /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(src);
 }
+// Le formule LaTeX restano nel testo normale; i blocchi di codice sono separati
+// prima di MathJax, così simboli come $ e backslash nel codice non diventano formule.
+const CODE_LANGS = new Set(['javascript','js','typescript','ts','python','py','java','c','cpp','c++','csharp','cs','c#','sql','json','html','css','bash','sh','shell','go','rust','php','ruby','r','text']);
+function codeLanguage(value) {
+  const v=(value||'').trim().toLowerCase();
+  return CODE_LANGS.has(v) ? v : 'text';
+}
+function codeHighlight(src, lang) {
+  if (lang==='text') return esc(src);
+  // Prima si individuano stringhe/commenti, poi gli altri token. Tutto viene
+  // comunque passato attraverso esc(): nessun HTML eseguibile dalle flashcard.
+  const pattern=/(\/\/[^\n]*|#[^\n]*|--[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:const|let|var|function|return|if|else|for|while|class|new|import|from|export|async|await|try|catch|throw|def|lambda|print|in|is|not|and|or|None|True|False|public|private|static|void|int|float|double|char|bool|boolean|String|SELECT|FROM|WHERE|INSERT|INTO|UPDATE|DELETE|JOIN|ON|ORDER|BY|GROUP|LIMIT|CREATE|TABLE|AS|NULL|true|false|null)\b|\b\d+(?:\.\d+)?\b)/g;
+  let out='', last=0;
+  for(const match of src.matchAll(pattern)) {
+    out+=esc(src.slice(last,match.index));
+    const token=match[0];
+    const cls=/^(\/\/|#|--|\/\*)/.test(token)?'code-comment':/^["'`]/.test(token)?'code-string':/^\d/.test(token)?'code-number':'code-keyword';
+    out+=`<span class="${cls}">${esc(token)}</span>`;
+    last=match.index+token.length;
+  }
+  return out+esc(src.slice(last));
+}
+function formattedCardText(source) {
+  const lines=source.replace(/\r\n?/g,'\n').split('\n');
+  let plain=[], parts=[];
+  const flush=()=>{if(plain.length){parts.push(`<div class="card-prose">${esc(plain.join('\n'))}</div>`);plain=[];}};
+  for(let i=0;i<lines.length;i++) {
+    const open=lines[i].match(/^\s*(`{3}|'{3})([\w+#-]*)\s*$/);
+    if(!open){plain.push(lines[i]);continue;}
+    let close=i+1;
+    while(close<lines.length && lines[close].trim()!==open[1])close++;
+    if(close===lines.length){plain.push(lines[i]);continue;}
+    flush();
+    const lang=codeLanguage(open[2]);
+    const code=lines.slice(i+1,close).join('\n');
+    parts.push(`<div class="code-block" data-code-block="true"><div class="code-toolbar"><span class="code-language">${esc(lang)}</span><button class="code-copy" type="button" data-action="copy-code" aria-label="Copia il codice">Copia</button></div><pre><code>${codeHighlight(code,lang)}</code></pre></div>`);
+    i=close;
+  }
+  flush();
+  return parts.join('');
+}
 function cardSide(card, side, context='list') {
   const content = side === 'front' ? card.front : card.back;
   const image = side === 'front' ? card.frontImage : card.backImage;
-  return `${content ? `<div class="side-text math-text">${esc(content)}</div>` : ''}${isValidImage(image) ? `<img class="side-image ${context==='list'?'side-image-thumb':'side-image-study'}" src="${image}" alt="Immagine della ${side==='front'?'domanda':'risposta'}" ${context==='list'?'loading="lazy"':''}>` : ''}`;
+  return `${content ? `<div class="side-text math-text">${formattedCardText(content)}</div>` : ''}${isValidImage(image) ? `<img class="side-image ${context==='list'?'side-image-thumb':'side-image-study'}" src="${image}" alt="Immagine della ${side==='front'?'domanda':'risposta'}" ${context==='list'?'loading="lazy"':''}>` : ''}`;
 }
 function imagePicker(side, label) {
   return `<div class="image-picker form-field"><label for="image-${side}">${label} (facoltativa)</label>
@@ -375,7 +416,7 @@ function cardModal(id=null){
  imageBusy=0;
  modal(card?'Modifica flashcard':'Nuova flashcard',`<form id="card-form">
   <div class="form-field"><label for="card-front">Domanda / fronte</label><textarea id="card-front" name="front" maxlength="5000" rows="3" placeholder="Scrivi la domanda o una formula LaTeX…">${esc(card?.front || '')}</textarea></div>
-  <small class="math-help">Puoi usare <code>$...$</code> per le formule in linea e <code>$$...$$</code> per le formule centrate.</small>
+  <small class="math-help">Formule: <code>$...$</code> e <code>$$...$$</code>. Codice: <code>'''python</code> oppure <code>&#96;&#96;&#96;python</code> su una riga, codice nelle righe seguenti, poi gli stessi tre delimitatori per chiudere.</small>
   ${imagePicker('front','Immagine della domanda')}
   <div class="form-field"><label for="card-back">Risposta / retro</label><textarea id="card-back" name="back" maxlength="10000" rows="4" placeholder="Scrivi la risposta o aggiungi un'immagine…">${esc(card?.back || '')}</textarea></div>
   ${imagePicker('back','Immagine della risposta')}
@@ -609,8 +650,16 @@ async function importFile(file){
 document.addEventListener('click', (event)=>{
  const trigger=event.target.closest('[data-action]');
  if(!trigger)return;
+ if(trigger.dataset.action==='copy-code')event.stopPropagation();
  const action=trigger.dataset.action;
  switch(action){
+ case 'copy-code':{
+  const block=trigger.closest('.code-block');
+  const code=block?.querySelector('code')?.textContent ?? '';
+  if(navigator.clipboard?.writeText){navigator.clipboard.writeText(code).then(()=>toast('Codice copiato.')).catch(()=>toast('Copia non disponibile.',true));}
+  else toast('Copia non disponibile in questo browser.',true);
+  break;
+ }
  case 'new-deck':deckModal();break;
  case 'new-deck-in-group':deckModal(null,state.activeGroupId);break;
  case 'new-group':groupModal();break;
@@ -634,7 +683,7 @@ document.addEventListener('click', (event)=>{
  case 'reshuffle-study':reshuffleStudy();break;
  case 'restart-study':startStudy(study?.type||'deck');break;
  case 'exit-study':study=null;render();break;
- case 'flip-card':flipCard();break;
+ case 'flip-card':if(!event.target.closest('.code-block'))flipCard();break;
  case 'mark-wrong':answerCard(false);break;
  case 'mark-correct':answerCard(true);break;
  case 'export-deck':exportDeck();break;
