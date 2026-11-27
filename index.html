@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#f6f7fb" id="theme-meta">
   <script>try { const t = localStorage.getItem("memodeck-theme"); document.documentElement.dataset.theme = t === "light" || t === "dark" ? t : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); } catch(e) { document.documentElement.dataset.theme = "light"; }</script>
   <meta name="description" content="Crea flashcard con testo e immagini, ripassale e salvale localmente in JSON. Nessun account necessario.">
-  <title>MemoDeck 12 — Flashcard tue, davvero · LaTeX</title>
+  <title>MemoDeck</title>
   <link rel="stylesheet" href="styles.css?v=12">
   <script>
     window.MathJax = {
@@ -34,7 +34,7 @@
         <button class="add-deck-link" id="sidebar-new-deck" type="button"><span class="plus-icon">+</span> Nuovo mazzo</button>
       </div>
       <div class="sidebar-footer">
-        <div class="privacy-note"><span class="privacy-icon">⌂</span><div><strong>Solo sul tuo dispositivo</strong><small>Nessun account o cloud</small></div></div>
+        <div class="privacy-note"><span class="privacy-icon">⌂</span><div><strong>Solo sul tuo dispositivo</strong><small></small></div></div>
         <button class="sidebar-foot-button" id="sidebar-backup" type="button">↓ Scarica backup completo</button>
         <button class="sidebar-foot-button" id="sidebar-import" type="button">↥ Importa file JSON</button>
       </div>
@@ -46,7 +46,7 @@
         <div class="topbar-right"><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Attiva modalità scura" title="Cambia tema"><span id="theme-icon" aria-hidden="true">☾</span><span id="theme-label">Tema scuro</span></button><span class="offline-status"><span class="status-dot"></span> Dati locali</span><button class="button button-small button-outline topbar-add" id="topbar-new-deck" type="button">+ Nuovo mazzo</button></div>
       </header>
       <main id="main-content" tabindex="-1"></main>
-      <footer class="page-footer">MemoDeck v12 · Flashcard e immagini si salvano in questo browser. Esporta un JSON per conservarle fuori dal browser o trasferirle.</footer>
+      <footer class="page-footer">MemoDeck v12</footer>
     </div>
   </div>
 
